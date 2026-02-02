@@ -1,25 +1,26 @@
 const express = require("express");
 const cors = require("cors");
+const axios = require("axios");
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-// ================= STATE =================
-let prices = [];
-let position = null;
+let position = "NONE";
 let entryPrice = null;
-let tradeHistory = [];
+let pnl = null;
+let history = [];
 
-// ================= RSI =================
-function calculateRSI(values, period = 14) {
-  if (values.length < period + 1) return null;
+// ---------------- INDICATORS ----------------
+
+function calculateRSI(prices, period = 14) {
+  if (prices.length < period + 1) return null;
 
   let gains = 0;
   let losses = 0;
 
-  for (let i = values.length - period; i < values.length; i++) {
-    const diff = values[i] - values[i - 1];
+  for (let i = prices.length - period; i < prices.length; i++) {
+    const diff = prices[i] - prices[i - 1];
     if (diff >= 0) gains += diff;
     else losses -= diff;
   }
@@ -30,118 +31,111 @@ function calculateRSI(values, period = 14) {
   return Math.round(100 - 100 / (1 + rs));
 }
 
-// ================= EMA =================
-function calculateEMA(values, period) {
-  const k = 2 / (period + 1);
-  let ema = values[0];
-  for (let i = 1; i < values.length; i++) {
-    ema = values[i] * k + ema * (1 - k);
+function calculateMACD(prices) {
+  if (prices.length < 26) return null;
+  const short = prices.slice(-12).reduce((a, b) => a + b) / 12;
+  const long = prices.slice(-26).reduce((a, b) => a + b) / 26;
+  return Math.round((short - long) * 100) / 100;
+}
+
+// ---------------- AI LOGIC ----------------
+
+function aiDecision(price, rsi, macd, strategy) {
+  let confidence = 60;
+  let signal = "HOLD";
+
+  if (strategy === "scalp") confidence += 10;
+  if (strategy === "long") confidence -= 10;
+
+  if (rsi !== null) {
+    if (rsi < 30) {
+      signal = "BUY";
+      confidence += 10;
+    }
+    if (rsi > 70) {
+      signal = "SELL";
+      confidence += 10;
+    }
   }
-  return ema;
+
+  if (macd !== null) {
+    if (macd > 0 && signal === "BUY") confidence += 5;
+    if (macd < 0 && signal === "SELL") confidence += 5;
+  }
+
+  confidence = Math.min(confidence, 95);
+
+  return { signal, confidence };
 }
 
-// ================= MACD =================
-function calculateMACD(values) {
-  if (values.length < 26) return null;
+// ---------------- API ----------------
 
-  const ema12 = calculateEMA(values.slice(-12), 12);
-  const ema26 = calculateEMA(values.slice(-26), 26);
-  return (ema12 - ema26).toFixed(2);
-}
-
-// ================= HOME =================
-app.get("/", (req, res) => {
-  res.json({
-    status: "ok",
-    message: "FlowTradeAI backend (RSI + MACD) running"
-  });
-});
-
-// ================= AI ENDPOINT =================
 app.post("/ai", async (req, res) => {
   try {
-    const response = await fetch(
-      "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd"
-    );
-    const data = await response.json();
-    const price = data.bitcoin.usd;
+    const strategy = req.body.strategy || "swing";
 
-    prices.push(price);
-    if (prices.length > 200) prices.shift();
+    const market = await axios.get(
+      "https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1m&limit=100"
+    );
+
+    const prices = market.data.map(c => parseFloat(c[4]));
+    const price = prices[prices.length - 1];
 
     const rsi = calculateRSI(prices);
     const macd = calculateMACD(prices);
 
-    let signal = "HOLD";
-    let confidence = 50;
-    let explanation = "Market neutral.";
+    const { signal, confidence } =
+      aiDecision(price, rsi, macd, strategy);
 
-    if (rsi !== null && macd !== null) {
-      if (rsi < 30 && macd > 0) {
-        signal = "BUY";
-        confidence = 82;
-        explanation = `RSI ${rsi} oversold + MACD bullish (${macd}).`;
-      } else if (rsi > 70 && macd < 0) {
-        signal = "SELL";
-        confidence = 84;
-        explanation = `RSI ${rsi} overbought + MACD bearish (${macd}).`;
-      } else {
-        explanation = `RSI ${rsi}, MACD ${macd} → mixed signals.`;
-      }
-    }
+    // ----- Paper trading -----
+    let explanation = "No action taken";
 
-    // ============ PAPER TRADING ============
-    if (signal === "BUY" && position !== "LONG") {
+    if (signal === "BUY" && position === "NONE") {
       position = "LONG";
       entryPrice = price;
-      tradeHistory.push({
-        time: new Date().toLocaleString(),
+      explanation = "AI opened LONG position";
+      history.unshift({
+        time: new Date().toLocaleTimeString(),
         action: "BUY",
         price
       });
     }
 
     if (signal === "SELL" && position === "LONG") {
-      const pnl = (((price - entryPrice) / entryPrice) * 100).toFixed(2);
-      tradeHistory.push({
-        time: new Date().toLocaleString(),
+      pnl = Math.round(((price - entryPrice) / entryPrice) * 10000) / 100;
+      position = "NONE";
+      entryPrice = null;
+      explanation = "AI closed position";
+      history.unshift({
+        time: new Date().toLocaleTimeString(),
         action: "SELL",
         price,
-        pnl
+        pnl: pnl + "%"
       });
-      position = null;
-      entryPrice = null;
     }
 
-    let pnl = null;
-    if (position === "LONG" && entryPrice) {
-      pnl = (((price - entryPrice) / entryPrice) * 100).toFixed(2);
-    }
+    history = history.slice(0, 20);
 
     res.json({
       price,
-      rsi,
-      macd,
       signal,
       confidence,
-      position: position || "NONE",
-      entryPrice,
+      rsi,
+      macd,
+      position,
       pnl,
-      explanation,
-      history: tradeHistory.slice(-10)
+      history,
+      explanation
     });
 
   } catch (err) {
-    res.json({
-      signal: "HOLD",
-      confidence: 40,
-      explanation: "Market data unavailable."
-    });
+    res.status(500).json({ error: "AI backend error" });
   }
 });
 
-// ================= START =================
+// ---------------- SERVER ----------------
+
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log("FlowTradeAI running on port " + PORT);
-});
+app.listen(PORT, () =>
+  console.log("FlowTradeAI backend running on port " + PORT)
+);
