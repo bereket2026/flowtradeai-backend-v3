@@ -1,188 +1,129 @@
-from flask import Flask, jsonify, request
-from flask_cors import CORS
+import ccxt
+import time
+import threading
+from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
-import ccxt, random, time
+from flask_cors import CORS
 
 app = Flask(__name__)
 CORS(app)
 
-# ===== DATABASE =====
-app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///flowtradeai.db"
-app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///flowtradeai.db'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
 db = SQLAlchemy(app)
 
-# ===== MODELS =====
-class User(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    email = db.Column(db.String(120), unique=True)
-    password = db.Column(db.String(120))
-    token = db.Column(db.String(120), unique=True)
-
-class ApiKey(db.Model):
+# ================= MODELS =================
+class APIKey(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer)
+    exchange = db.Column(db.String(20))
     api_key = db.Column(db.String(200))
-    secret = db.Column(db.String(200))
+    api_secret = db.Column(db.String(200))
 
-class Strategy(db.Model):
+
+class AutoBot(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer)
-    stop_loss = db.Column(db.Float, default=1.0)
-    take_profit = db.Column(db.Float, default=2.0)
-    risk = db.Column(db.Float, default=1.0)
-
-class Trade(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer)
-    pair = db.Column(db.String(20))
-    price = db.Column(db.Float)
+    symbol = db.Column(db.String(20))
     amount = db.Column(db.Float)
-    pnl = db.Column(db.Float)
-    time = db.Column(db.Integer)
+    active = db.Column(db.Boolean, default=True)
 
-PAIRS = ["BTC/USDT", "ETH/USDT"]
-POSITIONS = {}
-AUTO_TRADE = True
 
-# ===== HELPERS =====
-def get_user(token):
-    return User.query.filter_by(token=token).first()
-
-def get_exchange(user):
-    keys = ApiKey.query.filter_by(user_id=user.id).first()
-    if not keys:
-        return None
-    ex = ccxt.binance({
-        "apiKey": keys.api_key,
-        "secret": keys.secret,
-        "enableRateLimit": True,
-        "options": {"defaultType": "spot"}
+# ================= EXCHANGE =================
+def connect_exchange(api_key, api_secret):
+    return ccxt.binance({
+        'apiKey': api_key,
+        'secret': api_secret,
+        'enableRateLimit': True,
+        'options': {'defaultType': 'spot'}
     })
-    ex.set_sandbox_mode(True)
-    return ex
 
-def get_strategy(user):
-    strat = Strategy.query.filter_by(user_id=user.id).first()
-    if not strat:
-        strat = Strategy(user_id=user.id)
-        db.session.add(strat)
-        db.session.commit()
-    return strat
 
-# ===== ROUTES =====
-@app.route("/")
-def home():
-    return "FlowTradeAI backend running (Strategy Controls)"
+# ================= AI SIGNAL (PLACEHOLDER) =================
+def ai_signal(symbol):
+    import random
+    return random.choice(['buy', 'sell', None])
 
-@app.route("/login", methods=["POST"])
-def login():
-    d = request.json
-    user = User.query.filter_by(email=d["email"], password=d["password"]).first()
-    if not user:
-        return jsonify(success=False), 401
-    return jsonify(success=True, token=user.token)
 
-@app.route("/strategy", methods=["GET", "POST"])
-def strategy():
-    token = request.headers.get("Authorization")
-    user = get_user(token)
-    if not user:
-        return jsonify(error="Unauthorized"), 401
+# ================= AUTO TRADE CONTROL =================
+auto_trade_enabled = False
 
-    strat = get_strategy(user)
 
-    if request.method == "POST":
-        strat.stop_loss = float(request.json["stop_loss"])
-        strat.take_profit = float(request.json["take_profit"])
-        strat.risk = float(request.json["risk"])
-        db.session.commit()
+@app.route("/auto-trade/start", methods=["POST"])
+def start_auto_trade():
+    global auto_trade_enabled
+    auto_trade_enabled = True
+    return jsonify({"status": "started"})
 
-    return jsonify(
-        stop_loss=strat.stop_loss,
-        take_profit=strat.take_profit,
-        risk=strat.risk
-    )
 
+@app.route("/auto-trade/stop", methods=["POST"])
+def stop_auto_trade():
+    global auto_trade_enabled
+    auto_trade_enabled = False
+    return jsonify({"status": "stopped"})
+
+
+@app.route("/auto-trade/status")
+def auto_trade_status():
+    return jsonify({"running": auto_trade_enabled})
+
+
+# ================= DEMO ACCOUNT DATA =================
 @app.route("/account")
 def account():
-    token = request.headers.get("Authorization")
-    user = get_user(token)
-    if not user:
-        return jsonify(error="Unauthorized"), 401
+    return jsonify({"balance": 1000, "total_pnl": 25})
 
-    trades = Trade.query.filter_by(user_id=user.id).all()
-    pnl = round(sum(t.pnl for t in trades), 2)
-    return jsonify(balance=10000 + pnl, total_pnl=pnl)
 
 @app.route("/ai-signal")
-def ai_signal():
-    token = request.headers.get("Authorization")
-    user = get_user(token)
-    if not user:
-        return jsonify(error="Unauthorized"), 401
+def signals():
+    return jsonify([
+        {"pair": "BTC/USDT", "signal": "BUY", "confidence": 72, "price": 43000},
+        {"pair": "ETH/USDT", "signal": "SELL", "confidence": 64, "price": 2300},
+    ])
 
-    exchange = get_exchange(user)
-    strat = get_strategy(user)
-    results = []
 
-    for pair in PAIRS:
-        signal = random.choice(["BUY", "HOLD"])
-        confidence = random.randint(60, 95)
+# ================= AUTO TRADING LOOP =================
+def run_autobots():
+    global auto_trade_enabled
 
-        try:
-            price = round(exchange.fetch_ticker(pair)["last"], 2)
-        except:
-            price = round(random.uniform(100, 70000), 2)
+    with app.app_context():
+        while True:
+            if not auto_trade_enabled:
+                time.sleep(5)
+                continue
 
-        risk_amount = strat.risk / 100
-        amount = round(0.01 * risk_amount, 4)
+            bots = AutoBot.query.filter_by(active=True).all()
 
-        if AUTO_TRADE and signal == "BUY" and pair not in POSITIONS and exchange:
-            POSITIONS[pair] = {
-                "entry": price,
-                "amount": amount,
-                "sl": price * (1 - strat.stop_loss / 100),
-                "tp": price * (1 + strat.take_profit / 100)
-            }
-            try:
-                exchange.create_market_buy_order(pair, amount)
-            except:
-                pass
+            for bot in bots:
+                key = APIKey.query.filter_by(user_id=bot.user_id).first()
+                if not key:
+                    continue
 
-        if pair in POSITIONS:
-            pos = POSITIONS[pair]
-            if price <= pos["sl"] or price >= pos["tp"]:
-                pnl = round((price - pos["entry"]) * pos["amount"], 2)
-                db.session.add(Trade(
-                    user_id=user.id,
-                    pair=pair,
-                    price=price,
-                    amount=pos["amount"],
-                    pnl=pnl,
-                    time=int(time.time())
-                ))
-                db.session.commit()
-                del POSITIONS[pair]
+                exchange = connect_exchange(key.api_key, key.api_secret)
+                signal = ai_signal(bot.symbol)
 
-        results.append({
-            "pair": pair,
-            "signal": signal,
-            "confidence": confidence,
-            "price": price,
-            "position": POSITIONS.get(pair)
-        })
+                try:
+                    if signal == 'buy':
+                        exchange.create_market_buy_order(bot.symbol, bot.amount)
+                    elif signal == 'sell':
+                        exchange.create_market_sell_order(bot.symbol, bot.amount)
+                except Exception as e:
+                    print('Trade error:', e)
 
-    return jsonify(results)
+            time.sleep(60)
 
-if __name__ == "__main__":
+
+# ================= START BACKGROUND BOT =================
+def start_bot_thread():
+    thread = threading.Thread(target=run_autobots, daemon=True)
+    thread.start()
+
+
+# ================= MAIN =================
+if __name__ == '__main__':
     with app.app_context():
         db.create_all()
-        if not User.query.first():
-            db.session.add(User(
-                email="admin@flowtradeai.com",
-                password="123456",
-                token="demo-token"
-            ))
-            db.session.commit()
 
-    app.run(host="0.0.0.0", port=10000)
+    start_bot_thread()
+    app.run(host='0.0.0.0', port=5000)
