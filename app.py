@@ -1,7 +1,7 @@
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
-import ccxt, random, time, os
+import ccxt, random, time
 
 app = Flask(__name__)
 CORS(app)
@@ -24,6 +24,13 @@ class ApiKey(db.Model):
     api_key = db.Column(db.String(200))
     secret = db.Column(db.String(200))
 
+class Strategy(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer)
+    stop_loss = db.Column(db.Float, default=1.0)
+    take_profit = db.Column(db.Float, default=2.0)
+    risk = db.Column(db.Float, default=1.0)
+
 class Trade(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer)
@@ -33,12 +40,9 @@ class Trade(db.Model):
     pnl = db.Column(db.Float)
     time = db.Column(db.Integer)
 
-# ===== CONSTANTS =====
 PAIRS = ["BTC/USDT", "ETH/USDT"]
-STOP_LOSS_PCT = 1.0
-TAKE_PROFIT_PCT = 2.0
-AUTO_TRADE = True
 POSITIONS = {}
+AUTO_TRADE = True
 
 # ===== HELPERS =====
 def get_user(token):
@@ -57,34 +61,47 @@ def get_exchange(user):
     ex.set_sandbox_mode(True)
     return ex
 
+def get_strategy(user):
+    strat = Strategy.query.filter_by(user_id=user.id).first()
+    if not strat:
+        strat = Strategy(user_id=user.id)
+        db.session.add(strat)
+        db.session.commit()
+    return strat
+
 # ===== ROUTES =====
 @app.route("/")
 def home():
-    return "FlowTradeAI backend running (Database enabled)"
+    return "FlowTradeAI backend running (Strategy Controls)"
 
 @app.route("/login", methods=["POST"])
 def login():
     d = request.json
-    user = User.query.filter_by(email=d.get("email"), password=d.get("password")).first()
+    user = User.query.filter_by(email=d["email"], password=d["password"]).first()
     if not user:
         return jsonify(success=False), 401
     return jsonify(success=True, token=user.token)
 
-@app.route("/api-keys", methods=["POST"])
-def save_keys():
+@app.route("/strategy", methods=["GET", "POST"])
+def strategy():
     token = request.headers.get("Authorization")
     user = get_user(token)
     if not user:
         return jsonify(error="Unauthorized"), 401
 
-    ApiKey.query.filter_by(user_id=user.id).delete()
-    db.session.add(ApiKey(
-        user_id=user.id,
-        api_key=request.json.get("apiKey"),
-        secret=request.json.get("secret")
-    ))
-    db.session.commit()
-    return jsonify(success=True)
+    strat = get_strategy(user)
+
+    if request.method == "POST":
+        strat.stop_loss = float(request.json["stop_loss"])
+        strat.take_profit = float(request.json["take_profit"])
+        strat.risk = float(request.json["risk"])
+        db.session.commit()
+
+    return jsonify(
+        stop_loss=strat.stop_loss,
+        take_profit=strat.take_profit,
+        risk=strat.risk
+    )
 
 @app.route("/account")
 def account():
@@ -105,6 +122,7 @@ def ai_signal():
         return jsonify(error="Unauthorized"), 401
 
     exchange = get_exchange(user)
+    strat = get_strategy(user)
     results = []
 
     for pair in PAIRS:
@@ -116,29 +134,24 @@ def ai_signal():
         except:
             price = round(random.uniform(100, 70000), 2)
 
-        # OPEN
+        risk_amount = strat.risk / 100
+        amount = round(0.01 * risk_amount, 4)
+
         if AUTO_TRADE and signal == "BUY" and pair not in POSITIONS and exchange:
-            amount = 0.001
+            POSITIONS[pair] = {
+                "entry": price,
+                "amount": amount,
+                "sl": price * (1 - strat.stop_loss / 100),
+                "tp": price * (1 + strat.take_profit / 100)
+            }
             try:
                 exchange.create_market_buy_order(pair, amount)
             except:
                 pass
-            POSITIONS[pair] = {
-                "entry": price,
-                "amount": amount,
-                "sl": price * (1 - STOP_LOSS_PCT / 100),
-                "tp": price * (1 + TAKE_PROFIT_PCT / 100)
-            }
 
-        # CLOSE
         if pair in POSITIONS:
             pos = POSITIONS[pair]
             if price <= pos["sl"] or price >= pos["tp"]:
-                try:
-                    exchange.create_market_sell_order(pair, pos["amount"])
-                except:
-                    pass
-
                 pnl = round((price - pos["entry"]) * pos["amount"], 2)
                 db.session.add(Trade(
                     user_id=user.id,
@@ -164,8 +177,6 @@ def ai_signal():
 if __name__ == "__main__":
     with app.app_context():
         db.create_all()
-
-        # CREATE DEFAULT USER (ONLY FIRST TIME)
         if not User.query.first():
             db.session.add(User(
                 email="admin@flowtradeai.com",
