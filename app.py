@@ -14,81 +14,101 @@ USER = {
     "password": "123456"
 }
 
-# ===== BINANCE TESTNET KEYS =====
-BINANCE_API_KEY = os.getenv("BINANCE_API_KEY", "")
-BINANCE_SECRET = os.getenv("BINANCE_SECRET", "")
+# ===== BINANCE TESTNET KEYS (FROM RENDER ENV) =====
+BINANCE_API_KEY = os.getenv("BINANCE_API_KEY")
+BINANCE_SECRET = os.getenv("BINANCE_SECRET")
 
 exchange = ccxt.binance({
     "apiKey": BINANCE_API_KEY,
     "secret": BINANCE_SECRET,
     "enableRateLimit": True,
-    "options": {
-        "defaultType": "spot"
-    }
+    "options": {"defaultType": "spot"}
 })
-
 exchange.set_sandbox_mode(True)
 
 AUTO_TRADE = False
 BALANCE = 10000.0
 TRADES = []
+OPEN_POSITION = None
+
+STOP_LOSS_PCT = 1.0     # 1%
+TAKE_PROFIT_PCT = 2.0  # 2%
 
 @app.route("/")
 def home():
-    return "FlowTradeAI backend is running (Binance Testnet)"
+    return "FlowTradeAI backend running with SL/TP"
 
 @app.route("/login", methods=["POST"])
 def login():
-    data = request.json
-    if data and data.get("email") == USER["email"] and data.get("password") == USER["password"]:
+    d = request.json
+    if d and d["email"] == USER["email"] and d["password"] == USER["password"]:
         return jsonify(success=True, token="demo-token")
     return jsonify(success=False), 401
 
 @app.route("/account")
 def account():
-    total_pnl = round(sum(t["pnl"] for t in TRADES), 2)
-    return jsonify(balance=round(BALANCE, 2), total_pnl=total_pnl)
+    pnl = round(sum(t["pnl"] for t in TRADES), 2)
+    return jsonify(balance=round(BALANCE, 2), total_pnl=pnl)
 
 @app.route("/ai-signal")
 def ai_signal():
-    global BALANCE
+    global OPEN_POSITION, BALANCE
 
     signal = random.choice(["BUY", "SELL", "HOLD"])
-    confidence = random.randint(60, 95)
+    confidence = random.randint(65, 95)
 
     try:
-        ticker = exchange.fetch_ticker("BTC/USDT")
-        price = round(ticker["last"], 2)
+        price = round(exchange.fetch_ticker("BTC/USDT")["last"], 2)
     except:
         price = round(random.uniform(62000, 68000), 2)
 
-    if AUTO_TRADE and signal != "HOLD":
+    # ===== OPEN POSITION =====
+    if AUTO_TRADE and signal == "BUY" and OPEN_POSITION is None:
         amount = 0.001
-        pnl = 0
-
         try:
-            if signal == "BUY":
-                exchange.create_market_buy_order("BTC/USDT", amount)
-            elif signal == "SELL":
-                exchange.create_market_sell_order("BTC/USDT", amount)
-                pnl = round(random.uniform(-20, 40), 2)
-                BALANCE += pnl
-        except Exception as e:
-            print("Trade error:", e)
+            exchange.create_market_buy_order("BTC/USDT", amount)
+        except:
+            pass
 
-        TRADES.insert(0, {
-            "time": int(time.time()),
-            "pair": "BTC/USDT",
-            "side": signal,
-            "price": price,
+        OPEN_POSITION = {
+            "entry": price,
             "amount": amount,
-            "pnl": pnl
-        })
+            "sl": price * (1 - STOP_LOSS_PCT / 100),
+            "tp": price * (1 + TAKE_PROFIT_PCT / 100)
+        }
 
-        if len(TRADES) > 25:
-            TRADES.pop()
+    # ===== CHECK SL / TP =====
+    if OPEN_POSITION:
+        if price <= OPEN_POSITION["sl"] or price >= OPEN_POSITION["tp"]:
+            try:
+                exchange.create_market_sell_order("BTC/USDT", OPEN_POSITION["amount"])
+            except:
+                pass
 
-    return jsonify(signal=signal, confidence=confidence)
+            pnl = round(
+                (price - OPEN_POSITION["entry"]) * OPEN_POSITION["amount"], 2
+            )
+            BALANCE += pnl
+
+            TRADES.insert(0, {
+                "time": int(time.time()),
+                "pair": "BTC/USDT",
+                "side": "CLOSE",
+                "price": price,
+                "amount": OPEN_POSITION["amount"],
+                "pnl": pnl
+            })
+
+            OPEN_POSITION = None
+            if len(TRADES) > 30:
+                TRADES.pop()
+
+    return jsonify(
+        signal=signal,
+        confidence=confidence,
+        price=price,
+        position=OPEN_POSITION
+    )
 
 @app.route("/trades")
 def trades():
