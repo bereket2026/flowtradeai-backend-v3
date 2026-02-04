@@ -1,16 +1,33 @@
 from flask import Flask, jsonify, request
 from flask_cors import CORS
+import ccxt
 import random
 import time
+import os
 
 app = Flask(__name__)
 CORS(app)
 
-# ===== DEMO USER =====
+# ===== DEMO LOGIN =====
 USER = {
     "email": "admin@flowtradeai.com",
     "password": "123456"
 }
+
+# ===== BINANCE TESTNET KEYS =====
+BINANCE_API_KEY = os.getenv("BINANCE_API_KEY", "")
+BINANCE_SECRET = os.getenv("BINANCE_SECRET", "")
+
+exchange = ccxt.binance({
+    "apiKey": BINANCE_API_KEY,
+    "secret": BINANCE_SECRET,
+    "enableRateLimit": True,
+    "options": {
+        "defaultType": "spot"
+    }
+})
+
+exchange.set_sandbox_mode(True)
 
 AUTO_TRADE = False
 BALANCE = 10000.0
@@ -18,60 +35,57 @@ TRADES = []
 
 @app.route("/")
 def home():
-    return "FlowTradeAI backend is running"
+    return "FlowTradeAI backend is running (Binance Testnet)"
 
-@app.route("/health")
-def health():
-    return jsonify(status="ok")
-
-# ===== AUTH =====
 @app.route("/login", methods=["POST"])
 def login():
     data = request.json
-    if not data:
-        return jsonify(error="No data"), 400
-
-    if (
-        data.get("email") == USER["email"]
-        and data.get("password") == USER["password"]
-    ):
-        return jsonify(success=True, token="demo-token-123")
+    if data and data.get("email") == USER["email"] and data.get("password") == USER["password"]:
+        return jsonify(success=True, token="demo-token")
     return jsonify(success=False), 401
 
-# ===== ACCOUNT =====
 @app.route("/account")
 def account():
     total_pnl = round(sum(t["pnl"] for t in TRADES), 2)
     return jsonify(balance=round(BALANCE, 2), total_pnl=total_pnl)
 
-# ===== AI SIGNAL =====
 @app.route("/ai-signal")
 def ai_signal():
     global BALANCE
 
     signal = random.choice(["BUY", "SELL", "HOLD"])
     confidence = random.randint(60, 95)
-    price = round(random.uniform(62000, 68000), 2)
+
+    try:
+        ticker = exchange.fetch_ticker("BTC/USDT")
+        price = round(ticker["last"], 2)
+    except:
+        price = round(random.uniform(62000, 68000), 2)
 
     if AUTO_TRADE and signal != "HOLD":
-        amount = round(random.uniform(0.01, 0.03), 4)
+        amount = 0.001
         pnl = 0
 
-        if signal == "SELL":
-            pnl = round(random.uniform(-80, 150), 2)
-            BALANCE += pnl
+        try:
+            if signal == "BUY":
+                exchange.create_market_buy_order("BTC/USDT", amount)
+            elif signal == "SELL":
+                exchange.create_market_sell_order("BTC/USDT", amount)
+                pnl = round(random.uniform(-20, 40), 2)
+                BALANCE += pnl
+        except Exception as e:
+            print("Trade error:", e)
 
-        trade = {
+        TRADES.insert(0, {
             "time": int(time.time()),
             "pair": "BTC/USDT",
             "side": signal,
             "price": price,
             "amount": amount,
             "pnl": pnl
-        }
+        })
 
-        TRADES.insert(0, trade)
-        if len(TRADES) > 30:
+        if len(TRADES) > 25:
             TRADES.pop()
 
     return jsonify(signal=signal, confidence=confidence)
@@ -80,7 +94,6 @@ def ai_signal():
 def trades():
     return jsonify(TRADES)
 
-# ===== AUTO TRADE =====
 @app.route("/auto-trade/status")
 def auto_trade_status():
     return jsonify(enabled=AUTO_TRADE)
