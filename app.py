@@ -1,26 +1,17 @@
 from flask import Flask, jsonify, request
 from flask_cors import CORS
-import ccxt
-import random
-import time
-import os
+import ccxt, os, random, time
 
 app = Flask(__name__)
 CORS(app)
 
 # ===== DEMO LOGIN =====
-USER = {
-    "email": "admin@flowtradeai.com",
-    "password": "123456"
-}
+USER = {"email": "admin@flowtradeai.com", "password": "123456"}
 
-# ===== BINANCE TESTNET KEYS (FROM RENDER ENV) =====
-BINANCE_API_KEY = os.getenv("BINANCE_API_KEY")
-BINANCE_SECRET = os.getenv("BINANCE_SECRET")
-
+# ===== BINANCE TESTNET =====
 exchange = ccxt.binance({
-    "apiKey": BINANCE_API_KEY,
-    "secret": BINANCE_SECRET,
+    "apiKey": os.getenv("BINANCE_API_KEY"),
+    "secret": os.getenv("BINANCE_SECRET"),
     "enableRateLimit": True,
     "options": {"defaultType": "spot"}
 })
@@ -28,15 +19,17 @@ exchange.set_sandbox_mode(True)
 
 AUTO_TRADE = False
 BALANCE = 10000.0
-TRADES = []
-OPEN_POSITION = None
 
-STOP_LOSS_PCT = 1.0     # 1%
-TAKE_PROFIT_PCT = 2.0  # 2%
+PAIRS = ["BTC/USDT", "ETH/USDT", "SOL/USDT"]
+POSITIONS = {}   # pair -> position
+TRADES = []
+
+STOP_LOSS_PCT = 1.0
+TAKE_PROFIT_PCT = 2.0
 
 @app.route("/")
 def home():
-    return "FlowTradeAI backend running with SL/TP"
+    return "FlowTradeAI backend running (Multi-Pair)"
 
 @app.route("/login", methods=["POST"])
 def login():
@@ -52,63 +45,68 @@ def account():
 
 @app.route("/ai-signal")
 def ai_signal():
-    global OPEN_POSITION, BALANCE
+    global BALANCE
 
-    signal = random.choice(["BUY", "SELL", "HOLD"])
-    confidence = random.randint(65, 95)
+    results = []
 
-    try:
-        price = round(exchange.fetch_ticker("BTC/USDT")["last"], 2)
-    except:
-        price = round(random.uniform(62000, 68000), 2)
+    for pair in PAIRS:
+        signal = random.choice(["BUY", "HOLD"])
+        confidence = random.randint(60, 95)
 
-    # ===== OPEN POSITION =====
-    if AUTO_TRADE and signal == "BUY" and OPEN_POSITION is None:
-        amount = 0.001
         try:
-            exchange.create_market_buy_order("BTC/USDT", amount)
+            price = round(exchange.fetch_ticker(pair)["last"], 2)
         except:
-            pass
+            price = round(random.uniform(50, 70000), 2)
 
-        OPEN_POSITION = {
-            "entry": price,
-            "amount": amount,
-            "sl": price * (1 - STOP_LOSS_PCT / 100),
-            "tp": price * (1 + TAKE_PROFIT_PCT / 100)
-        }
-
-    # ===== CHECK SL / TP =====
-    if OPEN_POSITION:
-        if price <= OPEN_POSITION["sl"] or price >= OPEN_POSITION["tp"]:
+        # ===== OPEN =====
+        if AUTO_TRADE and signal == "BUY" and pair not in POSITIONS:
+            amount = 0.001 if "BTC" in pair else 0.01
             try:
-                exchange.create_market_sell_order("BTC/USDT", OPEN_POSITION["amount"])
+                exchange.create_market_buy_order(pair, amount)
             except:
                 pass
 
-            pnl = round(
-                (price - OPEN_POSITION["entry"]) * OPEN_POSITION["amount"], 2
-            )
-            BALANCE += pnl
+            POSITIONS[pair] = {
+                "entry": price,
+                "amount": amount,
+                "sl": price * (1 - STOP_LOSS_PCT / 100),
+                "tp": price * (1 + TAKE_PROFIT_PCT / 100)
+            }
 
-            TRADES.insert(0, {
-                "time": int(time.time()),
-                "pair": "BTC/USDT",
-                "side": "CLOSE",
-                "price": price,
-                "amount": OPEN_POSITION["amount"],
-                "pnl": pnl
-            })
+        # ===== CHECK SL / TP =====
+        if pair in POSITIONS:
+            pos = POSITIONS[pair]
+            if price <= pos["sl"] or price >= pos["tp"]:
+                try:
+                    exchange.create_market_sell_order(pair, pos["amount"])
+                except:
+                    pass
 
-            OPEN_POSITION = None
-            if len(TRADES) > 30:
-                TRADES.pop()
+                pnl = round((price - pos["entry"]) * pos["amount"], 2)
+                BALANCE += pnl
 
-    return jsonify(
-        signal=signal,
-        confidence=confidence,
-        price=price,
-        position=OPEN_POSITION
-    )
+                TRADES.insert(0, {
+                    "time": int(time.time()),
+                    "pair": pair,
+                    "side": "CLOSE",
+                    "price": price,
+                    "amount": pos["amount"],
+                    "pnl": pnl
+                })
+
+                del POSITIONS[pair]
+                if len(TRADES) > 40:
+                    TRADES.pop()
+
+        results.append({
+            "pair": pair,
+            "signal": signal,
+            "confidence": confidence,
+            "price": price,
+            "position": POSITIONS.get(pair)
+        })
+
+    return jsonify(results)
 
 @app.route("/trades")
 def trades():
