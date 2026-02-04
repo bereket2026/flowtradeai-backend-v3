@@ -1,4 +1,4 @@
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 from flask_cors import CORS
 import random
 import time
@@ -6,8 +6,14 @@ import time
 app = Flask(__name__)
 CORS(app)
 
+# ===== DEMO USER =====
+USER = {
+    "email": "admin@flowtradeai.com",
+    "password": "123456"
+}
+
 AUTO_TRADE = False
-BALANCE = 10000.0  # starting USDT balance
+BALANCE = 10000.0
 TRADES = []
 
 @app.route("/")
@@ -18,14 +24,27 @@ def home():
 def health():
     return jsonify(status="ok")
 
+# ===== AUTH =====
+@app.route("/login", methods=["POST"])
+def login():
+    data = request.json
+    if not data:
+        return jsonify(error="No data"), 400
+
+    if (
+        data.get("email") == USER["email"]
+        and data.get("password") == USER["password"]
+    ):
+        return jsonify(success=True, token="demo-token-123")
+    return jsonify(success=False), 401
+
+# ===== ACCOUNT =====
 @app.route("/account")
 def account():
     total_pnl = round(sum(t["pnl"] for t in TRADES), 2)
-    return jsonify(
-        balance=round(BALANCE, 2),
-        total_pnl=total_pnl
-    )
+    return jsonify(balance=round(BALANCE, 2), total_pnl=total_pnl)
 
+# ===== AI SIGNAL =====
 @app.route("/ai-signal")
 def ai_signal():
     global BALANCE
@@ -36,11 +55,10 @@ def ai_signal():
 
     if AUTO_TRADE and signal != "HOLD":
         amount = round(random.uniform(0.01, 0.03), 4)
-        cost = price * amount
-
         pnl = 0
+
         if signal == "SELL":
-            pnl = round(random.uniform(-50, 120), 2)
+            pnl = round(random.uniform(-80, 150), 2)
             BALANCE += pnl
 
         trade = {
@@ -53,7 +71,7 @@ def ai_signal():
         }
 
         TRADES.insert(0, trade)
-        if len(TRADES) > 25:
+        if len(TRADES) > 30:
             TRADES.pop()
 
     return jsonify(signal=signal, confidence=confidence)
@@ -62,6 +80,7 @@ def ai_signal():
 def trades():
     return jsonify(TRADES)
 
+# ===== AUTO TRADE =====
 @app.route("/auto-trade/status")
 def auto_trade_status():
     return jsonify(enabled=AUTO_TRADE)
