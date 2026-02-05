@@ -1,20 +1,23 @@
 import os
-import ccxt
 import time
-import datetime
 import threading
+import datetime
+import random
+
+import ccxt
 import jwt
 
 from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
 
+# ================= APP SETUP =================
 app = Flask(__name__)
 CORS(app)
 
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///flowtradeai.db'
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['SECRET_KEY'] = 'flowtradeai-secret-key'
+app.config["SECRET_KEY"] = "flowtradeai-secret"
+app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///flowtradeai.db"
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 db = SQLAlchemy(app)
 
@@ -24,18 +27,20 @@ class User(db.Model):
     email = db.Column(db.String(120), unique=True)
     password = db.Column(db.String(120))
 
-class AutoBot(db.Model):
+class Bot(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer)
-    symbol = db.Column(db.String(20), default="BTC/USDT")
-    amount = db.Column(db.Float, default=0.001)
     active = db.Column(db.Boolean, default=False)
+    last_buy_price = db.Column(db.Float, default=0.0)
 
-# ================= AUTH =================
+# ================= AUTH HELPERS =================
 def create_token(user_id):
     return jwt.encode(
-        {"user_id": user_id, "exp": datetime.datetime.utcnow() + datetime.timedelta(days=7)},
-        app.config['SECRET_KEY'],
+        {
+            "user_id": user_id,
+            "exp": datetime.datetime.utcnow() + datetime.timedelta(days=7)
+        },
+        app.config["SECRET_KEY"],
         algorithm="HS256"
     )
 
@@ -43,12 +48,11 @@ def get_user(req):
     auth = req.headers.get("Authorization")
     if not auth:
         return None
-
     try:
         token = auth.split(" ")[1]
-        data = jwt.decode(token, app.config['SECRET_KEY'], algorithms=["HS256"])
+        data = jwt.decode(token, app.config["SECRET_KEY"], algorithms=["HS256"])
         return User.query.get(data["user_id"])
-    except Exception:
+    except:
         return None
 
 # ================= BINANCE TESTNET =================
@@ -66,32 +70,48 @@ def connect_binance():
         }
     })
 
-# ================= SIMPLE AI SIGNAL =================
-def ai_signal():
-    import random
-    return random.choice(["buy", "sell", None])
+# ================= SIMPLE STRATEGY =================
+SYMBOL = "BTC/USDT"
+TRADE_USDT = 10
+BUY_DROP = 0.003   # 0.3%
+SELL_PROFIT = 0.004  # 0.4%
 
 # ================= TRADING LOOP =================
 def trading_loop():
     while True:
-        with app.app_context():
-            bots = AutoBot.query.filter_by(active=True).all()
+        try:
+            with app.app_context():
+                bot = Bot.query.filter_by(active=True).first()
+                if not bot:
+                    time.sleep(10)
+                    continue
 
-            if bots:
                 exchange = connect_binance()
+                ticker = exchange.fetch_ticker(SYMBOL)
+                price = ticker["last"]
 
-                for bot in bots:
-                    try:
-                        signal = ai_signal()
+                # BUY
+                if bot.last_buy_price == 0:
+                    usdt_balance = exchange.fetch_balance()["free"]["USDT"]
+                    if usdt_balance >= TRADE_USDT:
+                        amount = TRADE_USDT / price
+                        exchange.create_market_buy_order(SYMBOL, amount)
+                        bot.last_buy_price = price
+                        db.session.commit()
+                        print("BOUGHT at", price)
 
-                        if signal == "buy":
-                            exchange.create_market_buy_order(bot.symbol, bot.amount)
+                # SELL
+                else:
+                    if price >= bot.last_buy_price * (1 + SELL_PROFIT):
+                        btc_balance = exchange.fetch_balance()["free"]["BTC"]
+                        if btc_balance > 0:
+                            exchange.create_market_sell_order(SYMBOL, btc_balance)
+                            bot.last_buy_price = 0
+                            db.session.commit()
+                            print("SOLD at", price)
 
-                        elif signal == "sell":
-                            exchange.create_market_sell_order(bot.symbol, bot.amount)
-
-                    except Exception as e:
-                        print("Trade error:", e)
+        except Exception as e:
+            print("Trade error:", e)
 
         time.sleep(20)
 
@@ -105,28 +125,21 @@ def home():
 @app.route("/register", methods=["POST"])
 def register():
     data = request.json
-
-    if not data or not data.get("email") or not data.get("password"):
-        return jsonify({"error": "Missing email or password"}), 400
-
     if User.query.filter_by(email=data["email"]).first():
         return jsonify({"error": "User exists"}), 400
-
     user = User(email=data["email"], password=data["password"])
     db.session.add(user)
     db.session.commit()
-
     return jsonify({"message": "Registered"})
 
 @app.route("/login", methods=["POST"])
 def login():
     data = request.json
-
-    user = User.query.filter_by(email=data.get("email"), password=data.get("password")).first()
-
+    user = User.query.filter_by(
+        email=data["email"], password=data["password"]
+    ).first()
     if not user:
         return jsonify({"error": "Invalid login"}), 401
-
     return jsonify({"token": create_token(user.id)})
 
 @app.route("/start-bot", methods=["POST"])
@@ -135,10 +148,9 @@ def start_bot():
     if not user:
         return jsonify({"error": "Unauthorized"}), 401
 
-    bot = AutoBot.query.filter_by(user_id=user.id).first()
-
+    bot = Bot.query.filter_by(user_id=user.id).first()
     if not bot:
-        bot = AutoBot(user_id=user.id, active=True)
+        bot = Bot(user_id=user.id, active=True)
         db.session.add(bot)
     else:
         bot.active = True
@@ -152,29 +164,24 @@ def stop_bot():
     if not user:
         return jsonify({"error": "Unauthorized"}), 401
 
-    bot = AutoBot.query.filter_by(user_id=user.id).first()
+    bot = Bot.query.filter_by(user_id=user.id).first()
     if bot:
         bot.active = False
         db.session.commit()
 
     return jsonify({"message": "Bot stopped"})
 
-@app.route("/balance", methods=["GET"])
+@app.route("/balance")
 def balance():
-    try:
-        exchange = connect_binance()
-        bal = exchange.fetch_balance()
-
-        return jsonify({
-            "BTC": bal["total"].get("BTC", 0),
-            "USDT": bal["total"].get("USDT", 0)
-        })
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    exchange = connect_binance()
+    bal = exchange.fetch_balance()
+    return jsonify({
+        "BTC": bal["total"].get("BTC", 0),
+        "USDT": bal["total"].get("USDT", 0)
+    })
 
 # ================= MAIN =================
 if __name__ == "__main__":
     with app.app_context():
         db.create_all()
-
     app.run(host="0.0.0.0", port=10000)
