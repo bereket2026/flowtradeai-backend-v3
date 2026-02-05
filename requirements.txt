@@ -1,4 +1,6 @@
-flask
-flask-cors
-flask-sqlalchemy
+Flask
+Flask-SQLAlchemy
+Flask-Cors
 ccxt
+PyJWT
+gunicorn
