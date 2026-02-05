@@ -1,11 +1,16 @@
+# FlowTradeAI – Professional AI Trading Backend (Flask)
+
 import ccxt
 import time
 import threading
-from flask import Flask, request, jsonify
+import os
+import random
+from flask import Flask, jsonify, request, send_from_directory
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
 
-app = Flask(__name__)
+# ================= APP SETUP =================
+app = Flask(__name__, static_folder="static", static_url_path="/")
 CORS(app)
 
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///flowtradeai.db'
@@ -13,13 +18,7 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
 
-# ================= MODELS =================
-class User(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(50), unique=True)
-    password = db.Column(db.String(50))
-
-
+# ================= DATABASE MODELS =================
 class APIKey(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer)
@@ -36,56 +35,43 @@ class AutoBot(db.Model):
     active = db.Column(db.Boolean, default=True)
 
 
-# ================= EXCHANGE =================
+# ================= EXCHANGE CONNECTION =================
 def connect_exchange(api_key, api_secret):
     return ccxt.binance({
-        'apiKey': api_key.strip(),
-        'secret': api_secret.strip(),
+        'apiKey': api_key,
+        'secret': api_secret,
         'enableRateLimit': True,
-        'options': {'defaultType': 'spot'}
+        'options': {'defaultType': 'spot'},
+        'urls': {
+            'api': {
+                'public': 'https://testnet.binance.vision/api',
+                'private': 'https://testnet.binance.vision/api'
+            }
+        }
     })
 
 
-# ================= AI SIGNAL (SIMPLE STRATEGY) =================
+# ================= SIMPLE AI SIGNAL =================
 def ai_signal(symbol):
-    import random
     return random.choice(['buy', 'sell', None])
 
 
-# ================= LOGIN SYSTEM =================
-@app.route("/register", methods=["POST"])
-def register():
-    data = request.json
-
-    if User.query.filter_by(username=data["username"]).first():
-        return jsonify({"error": "User exists"}), 400
-
-    user = User(username=data["username"], password=data["password"])
-    db.session.add(user)
-    db.session.commit()
-
-    return jsonify({"status": "registered"})
-
-
-@app.route("/login", methods=["POST"])
-def login():
-    data = request.json
-
-    user = User.query.filter_by(
-        username=data["username"],
-        password=data["password"]
-    ).first()
-
-    if not user:
-        return jsonify({"error": "Invalid credentials"}), 401
-
-    return jsonify({"status": "success", "user_id": user.id})
-
-
-# ================= AUTO TRADE CONTROL =================
+# ================= GLOBAL BOT STATE =================
 auto_trade_enabled = False
 
 
+# ================= PRICE ENDPOINT =================
+@app.route("/price/<symbol>")
+def get_price(symbol):
+    try:
+        exchange = ccxt.binance()
+        ticker = exchange.fetch_ticker(symbol.upper())
+        return jsonify({"price": ticker['last']})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ================= AUTO TRADE CONTROL =================
 @app.route("/auto-trade/start", methods=["POST"])
 def start_auto_trade():
     global auto_trade_enabled
@@ -105,10 +91,10 @@ def auto_trade_status():
     return jsonify({"running": auto_trade_enabled})
 
 
-# ================= ACCOUNT DATA =================
+# ================= DEMO ACCOUNT =================
 @app.route("/account")
 def account():
-    return jsonify({"balance": "REAL BALANCE FROM BINANCE"})
+    return jsonify({"balance": 1000, "pnl": 0})
 
 
 # ================= AUTO TRADING LOOP =================
@@ -128,24 +114,34 @@ def run_autobots():
                 if not key:
                     continue
 
-                exchange = connect_exchange(key.api_key, key.api_secret)
-                signal = ai_signal(bot.symbol)
-
                 try:
+                    exchange = connect_exchange(key.api_key.strip(), key.api_secret.strip())
+                    signal = ai_signal(bot.symbol)
+
                     if signal == 'buy':
                         exchange.create_market_buy_order(bot.symbol, bot.amount)
+                        print("BUY order executed")
+
                     elif signal == 'sell':
                         exchange.create_market_sell_order(bot.symbol, bot.amount)
+                        print("SELL order executed")
+
                 except Exception as e:
-                    print('Trade error:', e)
+                    print("Trade error:", e)
 
             time.sleep(60)
 
 
-# ================= START BACKGROUND BOT =================
+# ================= START BOT THREAD =================
 def start_bot_thread():
     thread = threading.Thread(target=run_autobots, daemon=True)
     thread.start()
+
+
+# ================= SERVE DASHBOARD =================
+@app.route("/")
+def serve_dashboard():
+    return send_from_directory("static", "index.html")
 
 
 # ================= MAIN =================
@@ -153,10 +149,7 @@ if __name__ == '__main__':
     with app.app_context():
         db.create_all()
 
-        # create default admin if not exists
-        if not User.query.filter_by(username="admin").first():
-            db.session.add(User(username="admin", password="1234"))
-            db.session.commit()
-
     start_bot_thread()
-    app.run(host='0.0.0.0', port=5000)
+
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host='0.0.0.0', port=port)
