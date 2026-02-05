@@ -3,4 +3,3 @@ Flask-SQLAlchemy
 Flask-Cors
 ccxt
 PyJWT
-gunicorn
