@@ -1,26 +1,34 @@
 import ccxt
 import time
-import threading
 from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
+import jwt
+import datetime
 
 app = Flask(__name__)
+
+# 🔓 Allow frontend to connect
 CORS(app)
 
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///flowtradeai.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['SECRET_KEY'] = 'flowtradeai-secret-key'
 
 db = SQLAlchemy(app)
 
 # ================= MODELS =================
+class User(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    email = db.Column(db.String(120), unique=True)
+    password = db.Column(db.String(120))
+
 class APIKey(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer)
     exchange = db.Column(db.String(20))
     api_key = db.Column(db.String(200))
     api_secret = db.Column(db.String(200))
-
 
 class AutoBot(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -29,101 +37,85 @@ class AutoBot(db.Model):
     amount = db.Column(db.Float)
     active = db.Column(db.Boolean, default=True)
 
+# ================= AUTH HELPERS =================
+def create_token(user_id):
+    return jwt.encode(
+        {"user_id": user_id, "exp": datetime.datetime.utcnow() + datetime.timedelta(days=7)},
+        app.config['SECRET_KEY'],
+        algorithm="HS256"
+    )
 
-# ================= EXCHANGE =================
-def connect_exchange(api_key, api_secret):
-    return ccxt.binance({
-        'apiKey': api_key,
-        'secret': api_secret,
-        'enableRateLimit': True,
-        'options': {'defaultType': 'spot'}
-    })
+def get_user_from_token(req):
+    auth = req.headers.get("Authorization")
+    if not auth:
+        return None
+    token = auth.split(" ")[1]
+    try:
+        data = jwt.decode(token, app.config['SECRET_KEY'], algorithms=["HS256"])
+        return User.query.get(data["user_id"])
+    except:
+        return None
 
+# ================= AUTH ROUTES =================
+@app.route("/register", methods=["POST"])
+def register():
+    data = request.json
+    email = data.get("email")
+    password = data.get("password")
 
-# ================= AI SIGNAL (PLACEHOLDER) =================
-def ai_signal(symbol):
-    import random
-    return random.choice(['buy', 'sell', None])
+    if User.query.filter_by(email=email).first():
+        return jsonify({"error": "User already exists"}), 400
 
+    user = User(email=email, password=password)
+    db.session.add(user)
+    db.session.commit()
 
-# ================= AUTO TRADE CONTROL =================
-auto_trade_enabled = False
+    return jsonify({"message": "User created"})
 
+@app.route("/login", methods=["POST"])
+def login():
+    data = request.json
+    user = User.query.filter_by(email=data.get("email"), password=data.get("password")).first()
 
-@app.route("/auto-trade/start", methods=["POST"])
-def start_auto_trade():
-    global auto_trade_enabled
-    auto_trade_enabled = True
-    return jsonify({"status": "started"})
+    if not user:
+        return jsonify({"error": "Invalid credentials"}), 401
 
+    token = create_token(user.id)
+    return jsonify({"token": token})
 
-@app.route("/auto-trade/stop", methods=["POST"])
-def stop_auto_trade():
-    global auto_trade_enabled
-    auto_trade_enabled = False
-    return jsonify({"status": "stopped"})
+# ================= AUTO TRADE ROUTES =================
+@app.route("/start-bot", methods=["POST"])
+def start_bot():
+    user = get_user_from_token(request)
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
 
+    bot = AutoBot.query.filter_by(user_id=user.id).first()
+    if not bot:
+        bot = AutoBot(user_id=user.id, symbol="BTC/USDT", amount=0.001, active=True)
+        db.session.add(bot)
+    else:
+        bot.active = True
 
-@app.route("/auto-trade/status")
-def auto_trade_status():
-    return jsonify({"running": auto_trade_enabled})
+    db.session.commit()
+    return jsonify({"message": "Bot started"})
 
+@app.route("/stop-bot", methods=["POST"])
+def stop_bot():
+    user = get_user_from_token(request)
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
 
-# ================= DEMO ACCOUNT DATA =================
-@app.route("/account")
-def account():
-    return jsonify({"balance": 1000, "total_pnl": 25})
+    bot = AutoBot.query.filter_by(user_id=user.id).first()
+    if bot:
+        bot.active = False
+        db.session.commit()
 
-
-@app.route("/ai-signal")
-def signals():
-    return jsonify([
-        {"pair": "BTC/USDT", "signal": "BUY", "confidence": 72, "price": 43000},
-        {"pair": "ETH/USDT", "signal": "SELL", "confidence": 64, "price": 2300},
-    ])
-
-
-# ================= AUTO TRADING LOOP =================
-def run_autobots():
-    global auto_trade_enabled
-
-    with app.app_context():
-        while True:
-            if not auto_trade_enabled:
-                time.sleep(5)
-                continue
-
-            bots = AutoBot.query.filter_by(active=True).all()
-
-            for bot in bots:
-                key = APIKey.query.filter_by(user_id=bot.user_id).first()
-                if not key:
-                    continue
-
-                exchange = connect_exchange(key.api_key, key.api_secret)
-                signal = ai_signal(bot.symbol)
-
-                try:
-                    if signal == 'buy':
-                        exchange.create_market_buy_order(bot.symbol, bot.amount)
-                    elif signal == 'sell':
-                        exchange.create_market_sell_order(bot.symbol, bot.amount)
-                except Exception as e:
-                    print('Trade error:', e)
-
-            time.sleep(60)
-
-
-# ================= START BACKGROUND BOT =================
-def start_bot_thread():
-    thread = threading.Thread(target=run_autobots, daemon=True)
-    thread.start()
-
+    return jsonify({"message": "Bot stopped"})
 
 # ================= MAIN =================
-if __name__ == '__main__':
+if __name__ == "__main__":
     with app.app_context():
         db.create_all()
 
-    start_bot_thread()
-    app.run(host='0.0.0.0', port=5000)
+    app.run(host="0.0.0.0", port=10000)
