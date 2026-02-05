@@ -1,5 +1,3 @@
-import ccxt
-import time
 import datetime
 import jwt
 
@@ -8,15 +6,10 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
 
 app = Flask(__name__)
-
-# Allow frontend connection
 CORS(app)
 
-# Database
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///flowtradeai.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-
-# Secret key for JWT
 app.config['SECRET_KEY'] = 'flowtradeai-secret-key'
 
 db = SQLAlchemy(app)
@@ -29,14 +22,6 @@ class User(db.Model):
     password = db.Column(db.String(120))
 
 
-class APIKey(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer)
-    exchange = db.Column(db.String(20))
-    api_key = db.Column(db.String(200))
-    api_secret = db.Column(db.String(200))
-
-
 class AutoBot(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer)
@@ -45,46 +30,38 @@ class AutoBot(db.Model):
     active = db.Column(db.Boolean, default=True)
 
 
-# ================= AUTH HELPERS =================
+# ================= AUTH =================
 
 def create_token(user_id):
     return jwt.encode(
-        {
-            "user_id": user_id,
-            "exp": datetime.datetime.utcnow() + datetime.timedelta(days=7)
-        },
-        app.config['SECRET_KEY'],
-        algorithm="HS256"
+        {"user_id": user_id, "exp": datetime.datetime.utcnow() + datetime.timedelta(days=7)},
+        app.config["SECRET_KEY"],
+        algorithm="HS256",
     )
 
 
-def get_user_from_token(req):
+def get_user(req):
     auth = req.headers.get("Authorization")
-
     if not auth:
         return None
-
     try:
         token = auth.split(" ")[1]
-        data = jwt.decode(token, app.config['SECRET_KEY'], algorithms=["HS256"])
+        data = jwt.decode(token, app.config["SECRET_KEY"], algorithms=["HS256"])
         return User.query.get(data["user_id"])
     except:
         return None
 
 
-# ================= TEST ROUTE =================
+# ================= ROUTES =================
 
 @app.route("/")
 def home():
     return "FlowTradeAI backend is running"
 
 
-# ================= AUTH ROUTES =================
-
 @app.route("/register", methods=["POST"])
 def register():
     data = request.json
-
     email = data.get("email")
     password = data.get("password")
 
@@ -107,53 +84,40 @@ def login():
 
     user = User.query.filter_by(
         email=data.get("email"),
-        password=data.get("password")
+        password=data.get("password"),
     ).first()
 
     if not user:
         return jsonify({"error": "Invalid credentials"}), 401
 
     token = create_token(user.id)
-
     return jsonify({"token": token})
 
 
-# ================= BOT ROUTES =================
-
 @app.route("/start-bot", methods=["POST"])
 def start_bot():
-    user = get_user_from_token(request)
-
+    user = get_user(request)
     if not user:
         return jsonify({"error": "Unauthorized"}), 401
 
     bot = AutoBot.query.filter_by(user_id=user.id).first()
-
     if not bot:
-        bot = AutoBot(
-            user_id=user.id,
-            symbol="BTC/USDT",
-            amount=0.001,
-            active=True
-        )
+        bot = AutoBot(user_id=user.id, symbol="BTC/USDT", amount=0.001, active=True)
         db.session.add(bot)
     else:
         bot.active = True
 
     db.session.commit()
-
     return jsonify({"message": "Bot started"})
 
 
 @app.route("/stop-bot", methods=["POST"])
 def stop_bot():
-    user = get_user_from_token(request)
-
+    user = get_user(request)
     if not user:
         return jsonify({"error": "Unauthorized"}), 401
 
     bot = AutoBot.query.filter_by(user_id=user.id).first()
-
     if bot:
         bot.active = False
         db.session.commit()
