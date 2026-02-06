@@ -1,5 +1,2 @@
 flask
 flask-cors
-flask-sqlalchemy
-gunicorn
-ccxt
