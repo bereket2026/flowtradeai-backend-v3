@@ -1,28 +1,61 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>FlowTradeAI</title>
+    <title>FlowTradeAI Dashboard</title>
+    <style>
+        body {
+            font-family: Arial;
+            background: #0f172a;
+            color: white;
+            text-align: center;
+            padding-top: 80px;
+        }
+
+        .card {
+            background: #1e293b;
+            padding: 30px;
+            border-radius: 12px;
+            width: 300px;
+            margin: auto;
+            box-shadow: 0 0 10px black;
+        }
+
+        h1 {
+            margin-bottom: 20px;
+        }
+
+        button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            background: #22c55e;
+            color: white;
+            font-size: 16px;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background: #16a34a;
+        }
+    </style>
 </head>
-<body style="background:black; color:white; font-family:Arial; text-align:center; margin-top:50px;">
+<body>
 
-    <h1>FlowTradeAI Dashboard</h1>
-
-    <button onclick="loadAccount()">Load Account</button>
-
-    <h2 id="balance"></h2>
-    <h3 id="pnl"></h3>
+    <div class="card">
+        <h1>FlowTradeAI</h1>
+        <p id="balance">Loading...</p>
+        <button onclick="loadAccount()">Refresh</button>
+    </div>
 
     <script>
         async function loadAccount() {
             const res = await fetch("/account");
             const data = await res.json();
-
             document.getElementById("balance").innerText =
-                "Balance: $" + data.balance;
-
-            document.getElementById("pnl").innerText =
-                "PnL: $" + data.total_pnl;
+                "Balance: $" + data.balance + " | PNL: $" + data.total_pnl;
         }
+
+        loadAccount();
     </script>
 
 </body>
