@@ -1,154 +1,29 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>FlowTradeAI PRO</title>
-
-  <!-- TradingView Chart Library -->
-  <script src="https://s3.tradingview.com/tv.js"></script>
-
-  <style>
-    body {
-      margin: 0;
-      font-family: Arial, sans-serif;
-      background: #020617;
-      color: white;
-    }
-
-    header {
-      padding: 15px 20px;
-      background: #020617;
-      border-bottom: 1px solid #111827;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-
-    .title {
-      font-size: 20px;
-      font-weight: bold;
-      color: #22c55e;
-    }
-
-    .container {
-      display: grid;
-      grid-template-columns: 3fr 1fr;
-      height: calc(100vh - 60px);
-    }
-
-    #chart {
-      height: 100%;
-    }
-
-    .panel {
-      border-left: 1px solid #111827;
-      padding: 20px;
-      background: #020617;
-    }
-
-    .card {
-      background: #020617;
-      border: 1px solid #111827;
-      border-radius: 12px;
-      padding: 15px;
-      margin-bottom: 15px;
-    }
-
-    button {
-      width: 100%;
-      padding: 12px;
-      margin-top: 10px;
-      border: none;
-      border-radius: 8px;
-      font-size: 16px;
-      cursor: pointer;
-    }
-
-    .start { background: #16a34a; color: white; }
-    .stop { background: #dc2626; color: white; }
-
-    .price {
-      font-size: 24px;
-      margin-top: 10px;
-      color: #22c55e;
-    }
-  </style>
+    <title>FlowTradeAI</title>
 </head>
+<body style="background:black; color:white; font-family:Arial; text-align:center; margin-top:50px;">
 
-<body>
-  <header>
-    <div class="title">FlowTradeAI PRO</div>
-    <div id="status">Bot stopped</div>
-  </header>
+    <h1>FlowTradeAI Dashboard</h1>
 
-  <div class="container">
-    <div id="chart"></div>
+    <button onclick="loadAccount()">Load Account</button>
 
-    <div class="panel">
-      <div class="card">
-        <h3>BTC Price</h3>
-        <div id="btcPrice" class="price">Loading...</div>
-      </div>
+    <h2 id="balance"></h2>
+    <h3 id="pnl"></h3>
 
-      <div class="card">
-        <h3>Auto Trading</h3>
-        <button class="start" onclick="startBot()">Start Bot</button>
-        <button class="stop" onclick="stopBot()">Stop Bot</button>
-      </div>
+    <script>
+        async function loadAccount() {
+            const res = await fetch("/account");
+            const data = await res.json();
 
-      <div class="card">
-        <h3>AI Signal</h3>
-        <div id="signal">Waiting...</div>
-      </div>
-    </div>
-  </div>
+            document.getElementById("balance").innerText =
+                "Balance: $" + data.balance;
 
-  <script>
-    // TradingView Chart
-    new TradingView.widget({
-      container_id: "chart",
-      width: "100%",
-      height: "100%",
-      symbol: "BINANCE:BTCUSDT",
-      interval: "15",
-      timezone: "Etc/UTC",
-      theme: "dark",
-      style: "1",
-      locale: "en",
-      toolbar_bg: "#020617",
-      enable_publishing: false,
-      hide_side_toolbar: false,
-      allow_symbol_change: false
-    });
-
-    // Fetch BTC price
-    async function loadPrice() {
-      try {
-        const res = await fetch('/price/BTCUSDT');
-        const data = await res.json();
-        if (data.price) {
-          document.getElementById('btcPrice').innerText = '$' + data.price;
+            document.getElementById("pnl").innerText =
+                "PnL: $" + data.total_pnl;
         }
-      } catch {}
-    }
+    </script>
 
-    setInterval(loadPrice, 3000);
-    loadPrice();
-
-    // Start bot
-    async function startBot() {
-      await fetch('/auto-trade/start', { method: 'POST' });
-      document.getElementById('status').innerText = 'Bot running';
-      document.getElementById('signal').innerText = 'AI trading active';
-    }
-
-    // Stop bot
-    async function stopBot() {
-      await fetch('/auto-trade/stop', { method: 'POST' });
-      document.getElementById('status').innerText = 'Bot stopped';
-      document.getElementById('signal').innerText = 'Paused';
-    }
-  </script>
 </body>
 </html>
