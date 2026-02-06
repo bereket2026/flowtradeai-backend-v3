@@ -2,26 +2,26 @@ from flask import Flask, jsonify, send_from_directory
 from flask_cors import CORS
 import os
 
-app = Flask(__name__, static_folder="static", static_url_path="")
+app = Flask(__name__, static_folder="static")
 CORS(app)
 
-# Root → open dashboard
+# MAIN PAGE → open dashboard directly
 @app.route("/")
 def home():
-    return send_from_directory(app.static_folder, "index.html")
+    return send_from_directory("static", "index.html")
 
-# Account API
+# API → account info
 @app.route("/account")
 def account():
     return jsonify({
-        "status": "connected",
         "balance": 1000,
-        "total_pnl": 25
+        "total_pnl": 25,
+        "status": "connected"
     })
 
-# Health check
-@app.route("/health")
-def health():
+# OPTIONAL → health check
+@app.route("/status")
+def status():
     return jsonify({"status": "FlowTradeAI backend running"})
 
 if __name__ == "__main__":
