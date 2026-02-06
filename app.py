@@ -1,107 +1,69 @@
-import random
-import time
-from flask import Flask, jsonify
+from flask import Flask, render_template_string
 
 app = Flask(__name__)
 
-# ------------------------------
-# Simple in-memory paper account
-# ------------------------------
-account = {
-    "balance_usdt": 1000.0,
-    "position": None,
-    "entry_price": 0.0,
-    "trade_history": []
-}
+HTML = """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>FlowTradeAI Dashboard</title>
+    <style>
+        body {
+            font-family: Arial;
+            background: #0f172a;
+            color: white;
+            text-align: center;
+            padding-top: 50px;
+        }
+        .card {
+            background: #1e293b;
+            padding: 20px;
+            margin: 20px auto;
+            width: 300px;
+            border-radius: 12px;
+        }
+        button {
+            padding: 10px 20px;
+            margin: 10px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        .start { background: #22c55e; }
+        .stop { background: #ef4444; }
+    </style>
+</head>
+<body>
 
-# ------------------------------
-# Fake market price generator
-# (later we connect real API)
-# ------------------------------
-current_price = 30000.0
+<h1>🚀 FlowTradeAI Dashboard</h1>
 
-def get_market_price():
-    global current_price
-    change = random.uniform(-50, 50)
-    current_price += change
-    return round(current_price, 2)
+<div class="card">
+    <h2>Balance</h2>
+    <p>$10,000 (Paper)</p>
+</div>
 
-# ------------------------------
-# Simple trading strategy
-# ------------------------------
+<div class="card">
+    <h2>Profit</h2>
+    <p>$0.00</p>
+</div>
 
-def trading_decision(price):
-    """Very simple demo strategy"""
+<div class="card">
+    <h2>Bot Status</h2>
+    <p>Stopped</p>
+</div>
 
-    # Buy if price randomly chosen low signal
-    if account["position"] is None and random.random() < 0.3:
-        return "BUY"
+<button class="start">Start Bot</button>
+<button class="stop">Stop Bot</button>
 
-    # Sell if we are in position and small profit
-    if account["position"] == "LONG" and price > account["entry_price"] * 1.002:
-        return "SELL"
-
-    return "HOLD"
-
-# ------------------------------
-# Execute paper trade
-# ------------------------------
-
-def execute_trade(action, price):
-    if action == "BUY" and account["position"] is None:
-        account["position"] = "LONG"
-        account["entry_price"] = price
-        account["trade_history"].append({
-            "type": "BUY",
-            "price": price
-        })
-
-    elif action == "SELL" and account["position"] == "LONG":
-        profit = price - account["entry_price"]
-        account["balance_usdt"] += profit
-        account["position"] = None
-        account["entry_price"] = 0.0
-        account["trade_history"].append({
-            "type": "SELL",
-            "price": price,
-            "profit": round(profit, 2)
-        })
-
-# ------------------------------
-# Bot loop (runs in background)
-# ------------------------------
-
-def bot_step():
-    price = get_market_price()
-    decision = trading_decision(price)
-    execute_trade(decision, price)
-
-    return {
-        "price": price,
-        "decision": decision,
-        "account": account
-    }
-
-# ------------------------------
-# API Routes for dashboard
-# ------------------------------
+</body>
+</html>
+"""
 
 @app.route("/")
 def home():
-    return "FlowTradeAI Paper Bot Running"
+    return render_template_string(HTML)
 
-@app.route("/status")
-def status():
-    return jsonify(bot_step())
-
-@app.route("/history")
-def history():
-    return jsonify(account["trade_history"])
-
-
-# ------------------------------
-# Local run (Render uses gunicorn)
-# ------------------------------
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000)
+    app.run(host="0.0.0.0", port=5000)
