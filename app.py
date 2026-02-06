@@ -5,12 +5,12 @@ import os
 app = Flask(__name__, static_folder="static")
 CORS(app)
 
-# Root route (simple test message)
+# Root → status message
 @app.route("/")
 def home():
     return jsonify({"status": "FlowTradeAI backend running"})
 
-# Dashboard page (opens index.html)
+# Dashboard → open HTML page
 @app.route("/dashboard")
 def dashboard():
     return send_from_directory("static", "index.html")
@@ -18,7 +18,11 @@ def dashboard():
 # Example API endpoint
 @app.route("/account")
 def account():
-    return jsonify({"balance": 1000, "total_pnl": 25})
+    return jsonify({
+        "balance": 1000,
+        "total_pnl": 25,
+        "status": "connected"
+    })
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
