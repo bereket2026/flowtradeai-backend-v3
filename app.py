@@ -5,12 +5,14 @@ import os
 app = Flask(__name__, static_folder="static")
 CORS(app)
 
-# MAIN PAGE → open dashboard directly
 @app.route("/")
 def home():
+    return jsonify({"status": "FlowTradeAI backend running"})
+
+@app.route("/dashboard")
+def dashboard():
     return send_from_directory("static", "index.html")
 
-# API → account info
 @app.route("/account")
 def account():
     return jsonify({
@@ -18,11 +20,6 @@ def account():
         "total_pnl": 25,
         "status": "connected"
     })
-
-# OPTIONAL → health check
-@app.route("/status")
-def status():
-    return jsonify({"status": "FlowTradeAI backend running"})
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
