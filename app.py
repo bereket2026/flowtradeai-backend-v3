@@ -4,8 +4,9 @@ import os
 
 app = Flask(__name__)
 
-API_KEY = os.getenv("BINANCE_API_KEY")
-API_SECRET = os.getenv("BINANCE_API_SECRET")
+# Read keys and REMOVE hidden spaces/newlines
+API_KEY = os.getenv("BINANCE_API_KEY", "").strip()
+API_SECRET = os.getenv("BINANCE_API_SECRET", "").strip()
 
 client = Client(API_KEY, API_SECRET)
 client.FUTURES_URL = "https://testnet.binancefuture.com/fapi"
@@ -18,7 +19,6 @@ def home():
 def account():
     try:
         balance_info = client.futures_account_balance()
-
         usdt = next((b for b in balance_info if b["asset"] == "USDT"), None)
 
         return jsonify({
@@ -26,6 +26,7 @@ def account():
             "pnl": float(usdt["crossUnPnl"]) if usdt else 0,
             "status": "connected to Binance TESTNET"
         })
+
     except Exception as e:
         return jsonify({
             "status": "error",
