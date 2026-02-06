@@ -5,10 +5,17 @@ import os
 app = Flask(__name__, static_folder="static")
 CORS(app)
 
+# Root route (simple test message)
 @app.route("/")
 def home():
+    return jsonify({"status": "FlowTradeAI backend running"})
+
+# Dashboard page (opens index.html)
+@app.route("/dashboard")
+def dashboard():
     return send_from_directory("static", "index.html")
 
+# Example API endpoint
 @app.route("/account")
 def account():
     return jsonify({"balance": 1000, "total_pnl": 25})
