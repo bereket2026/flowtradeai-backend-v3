@@ -1,16 +1,18 @@
 from flask import Flask, jsonify, send_from_directory
 from flask_cors import CORS
+import os
 
-app = Flask(__name__, static_folder="static", static_url_path="/")
+app = Flask(__name__, static_folder="static")
 CORS(app)
 
-# ---------------- HOME PAGE ----------------
+
+# ---------- HOME PAGE ----------
 @app.route("/")
 def home():
     return send_from_directory("static", "index.html")
 
 
-# ---------------- ACCOUNT API ----------------
+# ---------- TEST ACCOUNT API ----------
 @app.route("/account")
 def account():
     return jsonify({
@@ -19,12 +21,7 @@ def account():
     })
 
 
-# ---------------- HEALTH CHECK ----------------
-@app.route("/health")
-def health():
-    return "OK"
-
-
-# ---------------- RUN ----------------
+# ---------- REQUIRED FOR RENDER ----------
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
