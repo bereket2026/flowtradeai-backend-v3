@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>FlowTradeAI Dashboard</title>
+    <style>
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background: #0b1a33;
+            color: white;
+            text-align: center;
+        }
+
+        h1 {
+            margin-top: 40px;
+        }
+
+        .card {
+            background: #162447;
+            margin: 20px auto;
+            padding: 20px;
+            width: 250px;
+            border-radius: 12px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.3);
+        }
+
+        button {
+            padding: 10px 20px;
+            margin: 10px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+
+        .start { background: #2ecc71; color: white; }
+        .stop { background: #e74c3c; color: white; }
+    </style>
+</head>
+
+<body>
+
+<h1>🚀 FlowTradeAI Dashboard</h1>
+
+<div class="card">
+    <h3>Balance</h3>
+    <p>$10,000</p>
+</div>
+
+<div class="card">
+    <h3>Profit</h3>
+    <p>$0</p>
+</div>
+
+<div class="card">
+    <h3>Bot Status</h3>
+    <p>Stopped</p>
+</div>
+
+<button class="start">Start Bot</button>
+<button class="stop">Stop Bot</button>
+
+</body>
+</html>
