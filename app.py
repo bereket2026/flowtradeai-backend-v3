@@ -1,46 +1,20 @@
 from flask import Flask, jsonify
-import random
+from binance.client import Client
+import os
 
 app = Flask(__name__)
 
-# --- Fake price generator (for now) ---
-def get_price():
-    return round(random.uniform(60000, 70000), 2)
-
-
-# --- Simple RSI/EMA-like logic ---
-def generate_signal(price):
-    if price > 65000:
-        return "SELL"
-    elif price < 63000:
-        return "BUY"
-    else:
-        return "HOLD"
-
+# Binance client (no keys needed for public price)
+client = Client()
 
 @app.route("/")
 def home():
     return "FlowTradeAI Signal API is running 🚀"
 
-
-@app.route("/price")
-def price():
-    return jsonify({"price": get_price()})
-
-
-@app.route("/signal")
-def signal():
-    price = get_price()
-    return jsonify({
-        "price": price,
-        "signal": generate_signal(price)
-    })
-
-
-@app.route("/status")
-def status():
-    return jsonify({"status": "online"})
-
+@app.route("/price/<symbol>")
+def price(symbol):
+    ticker = client.get_symbol_ticker(symbol=symbol.upper())
+    return jsonify(ticker)
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
