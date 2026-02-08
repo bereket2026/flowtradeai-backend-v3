@@ -3,10 +3,7 @@ import requests
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
-# Get token from Render environment variable
 TOKEN = os.getenv("TELEGRAM_TOKEN")
-
-# Your BTC signal API
 API_URL = "https://flowtradeai-backend-v3.onrender.com"
 
 
@@ -42,7 +39,7 @@ async def btc(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     if not TOKEN:
-        raise ValueError("TELEGRAM_TOKEN not set in environment variables")
+        raise ValueError("TELEGRAM_TOKEN not set")
 
     app = ApplicationBuilder().token(TOKEN).build()
 
