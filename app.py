@@ -12,27 +12,20 @@ def signal(symbol):
     try:
         symbol = symbol.lower().replace("usdt", "")
 
-        # Get 7-day price history
-        url = f"https://api.coingecko.com/api/v3/coins/{symbol}/market_chart?vs_currency=usd&days=7"
-        data = requests.get(url).json()
+        url = f"https://api.coingecko.com/api/v3/simple/price?ids={symbol}&vs_currencies=usd"
+        response = requests.get(url)
+        data = response.json()
 
-        prices = [p[1] for p in data["prices"]]
+        # check if symbol exists
+        if symbol not in data:
+            return jsonify({"error": "Symbol not found on CoinGecko"})
 
-        first_price = prices[0]
-        last_price = prices[-1]
-
-        # Simple trend logic
-        if last_price > first_price * 1.02:
-            trade_signal = "BUY"
-        elif last_price < first_price * 0.98:
-            trade_signal = "SELL"
-        else:
-            trade_signal = "HOLD"
+        price = data[symbol]["usd"]
 
         return jsonify({
             "symbol": symbol.upper() + "USDT",
-            "price": round(last_price, 2),
-            "signal": trade_signal
+            "price": price,
+            "signal": "BUY"
         })
 
     except Exception as e:
