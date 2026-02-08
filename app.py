@@ -3,37 +3,66 @@ from flask import Flask, jsonify
 
 app = Flask(__name__)
 
-# CoinGecko symbol map
-COINS = {
+# Map common symbols to CoinGecko IDs
+SYMBOL_MAP = {
     "btc": "bitcoin",
     "eth": "ethereum",
-    "sol": "solana"
+    "bnb": "binancecoin",
+    "sol": "solana",
+    "xrp": "ripple",
+    "ada": "cardano",
+    "doge": "dogecoin"
 }
+
+def get_price_and_rsi(coin_id):
+    # Get market data (includes price change %)
+    url = f"https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids={coin_id}"
+    data = requests.get(url).json()
+
+    if not data:
+        return None, None
+
+    price = data[0]["current_price"]
+    change_24h = data[0]["price_change_percentage_24h"]
+
+    # Simple RSI-like logic using 24h change
+    if change_24h is None:
+        rsi = 50
+    else:
+        rsi = 50 + change_24h
+
+    return price, rsi
+
 
 @app.route("/")
 def home():
-    return "FlowTradeAI Signal API is running 🚀"
+    return "FlowTradeAI Signal API with RSI is LIVE 🚀"
+
 
 @app.route("/signal/<symbol>")
 def signal(symbol):
-    try:
-        symbol = symbol.lower().replace("usdt", "")
+    symbol = symbol.lower().replace("usdt", "")
 
-        if symbol not in COINS:
-            return jsonify({"error": "Unsupported symbol"}), 400
+    if symbol not in SYMBOL_MAP:
+        return jsonify({"error": "Unsupported symbol"})
 
-        coin_id = COINS[symbol]
+    coin_id = SYMBOL_MAP[symbol]
+    price, rsi = get_price_and_rsi(coin_id)
 
-        url = f"https://api.coingecko.com/api/v3/simple/price?ids={coin_id}&vs_currencies=usd"
-        data = requests.get(url).json()
+    if price is None:
+        return jsonify({"error": "Data not found"})
 
-        price = data[coin_id]["usd"]
+    # Trading decision
+    if rsi < 30:
+        decision = "BUY"
+    elif rsi > 70:
+        decision = "SELL"
+    else:
+        decision = "HOLD"
 
-        return jsonify({
-            "symbol": symbol.upper() + "USDT",
-            "price": price,
-            "signal": "BUY"
-        })
-
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    return jsonify({
+        "symbol": symbol.upper() + "USDT",
+        "price": price,
+        "rsi": round(rsi, 2),
+        "signal": decision
+    })
