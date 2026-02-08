@@ -3,6 +3,16 @@ from flask import Flask, jsonify
 
 app = Flask(__name__)
 
+# CoinGecko ID mapping
+COINS = {
+    "btc": "bitcoin",
+    "bitcoin": "bitcoin",
+    "eth": "ethereum",
+    "ethereum": "ethereum",
+    "bnb": "binancecoin",
+    "sol": "solana"
+}
+
 @app.route("/")
 def home():
     return "FlowTradeAI Signal API is running 🚀"
@@ -12,15 +22,16 @@ def signal(symbol):
     try:
         symbol = symbol.lower().replace("usdt", "")
 
-        url = f"https://api.coingecko.com/api/v3/simple/price?ids={symbol}&vs_currencies=usd"
-        response = requests.get(url)
-        data = response.json()
+        # map to correct CoinGecko ID
+        if symbol not in COINS:
+            return jsonify({"error": "Unsupported symbol"})
 
-        # check if symbol exists
-        if symbol not in data:
-            return jsonify({"error": "Symbol not found on CoinGecko"})
+        coin_id = COINS[symbol]
 
-        price = data[symbol]["usd"]
+        url = f"https://api.coingecko.com/api/v3/simple/price?ids={coin_id}&vs_currencies=usd"
+        data = requests.get(url).json()
+
+        price = data[coin_id]["usd"]
 
         return jsonify({
             "symbol": symbol.upper() + "USDT",
