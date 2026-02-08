@@ -3,13 +3,10 @@ from flask import Flask, jsonify
 
 app = Flask(__name__)
 
-# CoinGecko ID mapping
+# CoinGecko symbol map
 COINS = {
     "btc": "bitcoin",
-    "bitcoin": "bitcoin",
     "eth": "ethereum",
-    "ethereum": "ethereum",
-    "bnb": "binancecoin",
     "sol": "solana"
 }
 
@@ -22,9 +19,8 @@ def signal(symbol):
     try:
         symbol = symbol.lower().replace("usdt", "")
 
-        # map to correct CoinGecko ID
         if symbol not in COINS:
-            return jsonify({"error": "Unsupported symbol"})
+            return jsonify({"error": "Unsupported symbol"}), 400
 
         coin_id = COINS[symbol]
 
@@ -40,4 +36,4 @@ def signal(symbol):
         })
 
     except Exception as e:
-        return jsonify({"error": str(e)})
+        return jsonify({"error": str(e)}), 500
