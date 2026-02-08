@@ -1,11 +1,7 @@
 from flask import Flask, jsonify
-from binance.client import Client
-import os
+import requests
 
 app = Flask(__name__)
-
-# Binance client (no keys needed for public price)
-client = Client()
 
 @app.route("/")
 def home():
@@ -13,8 +9,9 @@ def home():
 
 @app.route("/price/<symbol>")
 def price(symbol):
-    ticker = client.get_symbol_ticker(symbol=symbol.upper())
-    return jsonify(ticker)
+    url = f"https://api.coingecko.com/api/v3/simple/price?ids={symbol.lower()}&vs_currencies=usd"
+    data = requests.get(url).json()
+    return jsonify(data)
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
