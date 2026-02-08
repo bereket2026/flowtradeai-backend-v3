@@ -1,4 +1,3 @@
-lflask
-gunicorn
+flask
 requests
 python-telegram-bot
