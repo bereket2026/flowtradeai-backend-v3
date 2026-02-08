@@ -3,11 +3,11 @@ import requests
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
-# 🔐 Put your NEW Telegram token here or use environment variable
-TOKEN = os.getenv("TELEGRAM_TOKEN", "PASTE_NEW_TOKEN_HERE")
+# 🔐 Telegram token from environment variable
+TOKEN = AAF05oQ9mRlh-PRkbVU3KbXoPeF6yJ_VtwM
 
-# Your BTC signal API endpoint (replace with your real URL if different)
-API_URL = "https://flowtradeai-backend-v3.onrender.com"
+# BTC signal endpoint
+API_URL = "https://flowtradeai-backend-v3.onrender.com/signal/btc"
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -22,7 +22,6 @@ async def btc(update: Update, context: ContextTypes.DEFAULT_TYPE):
         response = requests.get(API_URL, timeout=10)
         data = response.json()
 
-        # If API returns error
         if "error" in data:
             await update.message.reply_text(f"❌ API Error: {data['error']}")
             return
@@ -46,7 +45,8 @@ async def btc(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 def main():
-    if TOKEN == AAF05oQ9mRlh-PRkbVU3KbXoPeF6yJ_VtwM
+    if TOKEN == "PASTE_NEW_TOKEN_HERE":
+        print AAF05oQ9mRlh-PRkbVU3KbXoPeF6yJ_VtwM
 
     app = ApplicationBuilder().token(TOKEN).build()
 
