@@ -1,125 +1,57 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FlowTrade AI Dashboard</title>
-
+    <title>FlowTradeAI Dashboard</title>
     <style>
         body {
-            margin: 0;
-            font-family: Arial, sans-serif;
-            background: #0f172a;
+            font-family: Arial;
+            background: #0b0f1a;
             color: white;
             text-align: center;
         }
-
-        header {
-            background: #020617;
-            padding: 20px;
-            font-size: 24px;
-            font-weight: bold;
-        }
-
-        .container {
-            padding: 40px;
-        }
-
         .card {
             background: #111827;
-            padding: 25px;
             margin: 20px auto;
+            padding: 20px;
+            width: 250px;
             border-radius: 12px;
-            max-width: 400px;
-            box-shadow: 0 0 20px rgba(0,0,0,0.4);
         }
-
-        button {
-            padding: 12px 20px;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-            font-size: 16px;
-            margin: 10px;
-        }
-
-        .start { background: #16a34a; color: white; }
-        .stop { background: #dc2626; color: white; }
-
-        input {
-            padding: 10px;
-            border-radius: 6px;
-            border: none;
-            margin-right: 10px;
-        }
+        .buy { color: #22c55e; }
+        .sell { color: #ef4444; }
+        .hold { color: #eab308; }
     </style>
 </head>
-
 <body>
 
-<header>
-    🚀 FlowTrade AI Dashboard
-</header>
+<h1>🚀 FlowTradeAI Live Signals</h1>
 
-<div class="container">
-
-    <div class="card">
-        <h2>Account</h2>
-        <p>Balance: <span id="balance">--</span></p>
-        <p>PnL: <span id="pnl">--</span></p>
-    </div>
-
-    <div class="card">
-        <h2>Price Checker</h2>
-        <input id="symbol" placeholder="BTC/USDT">
-        <button onclick="getPrice()">Get Price</button>
-        <p>Price: <span id="price">--</span></p>
-    </div>
-
-    <div class="card">
-        <h2>Auto Trading</h2>
-        <button class="start" onclick="startBot()">Start</button>
-        <button class="stop" onclick="stopBot()">Stop</button>
-        <p>Status: <span id="status">--</span></p>
-    </div>
-
-</div>
+<div id="signals"></div>
 
 <script>
-async function loadAccount() {
-    const res = await fetch("/account");
-    const data = await res.json();
-    document.getElementById("balance").innerText = data.balance;
-    document.getElementById("pnl").innerText = data.pnl;
+async function loadSignals() {
+    const coins = ["btc", "eth", "bnb"];
+    let html = "";
+
+    for (let coin of coins) {
+        const res = await fetch(`/signal/${coin}`);
+        const data = await res.json();
+
+        html += `
+        <div class="card">
+            <h2>${data.symbol}</h2>
+            <p>Price: $${data.price}</p>
+            <p>RSI: ${data.rsi}</p>
+            <h3 class="${data.signal.toLowerCase()}">${data.signal}</h3>
+        </div>
+        `;
+    }
+
+    document.getElementById("signals").innerHTML = html;
 }
 
-async function getPrice() {
-    const symbol = document.getElementById("symbol").value;
-    const res = await fetch("/price/" + symbol);
-    const data = await res.json();
-    document.getElementById("price").innerText = data.price || data.error;
-}
-
-async function startBot() {
-    await fetch("/auto-trade/start", { method: "POST" });
-    checkStatus();
-}
-
-async function stopBot() {
-    await fetch("/auto-trade/stop", { method: "POST" });
-    checkStatus();
-}
-
-async function checkStatus() {
-    const res = await fetch("/auto-trade/status");
-    const data = await res.json();
-    document.getElementById("status").innerText = data.running ? "Running" : "Stopped";
-}
-
-loadAccount();
-checkStatus();
+loadSignals();
+setInterval(loadSignals, 15000);
 </script>
 
 </body>
-
 </html>
