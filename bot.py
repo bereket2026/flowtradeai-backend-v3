@@ -2,43 +2,49 @@ import requests
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
+# 🔑 PUT YOUR TELEGRAM BOT TOKEN HERE
 TOKEN = "PASTE_NEW_TOKEN_HERE"
-API_URL = "https://flowtradeai-backend-v3.onrender.com/signal/"
 
+# Your working signal API
+API_URL = "https://flowtradeai-backend-v3.onrender.com/signal/bitcoin"
+
+
+# /start command
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "🚀 FlowTradeAI Bot Ready\n\n"
-        "Type:\n"
-        "/btc\n/eth\n/sol"
+        "🚀 FlowTradeAI Bot Ready!\n\n"
+        "Type /signal to get Bitcoin signal."
     )
 
+
+# /signal command
 async def signal(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    symbol = update.message.text.replace("/", "").lower()
-
     try:
-        res = requests.get(API_URL + symbol).json()
+        res = requests.get(API_URL, timeout=10)
+        data = res.json()
 
-        if "error" in res:
-            await update.message.reply_text("❌ " + res["error"])
-            return
-
-        msg = (
-            f"📊 {res['symbol']}\n"
-            f"💰 Price: {res['price']}$\n"
-            f"📈 RSI: {res['rsi']}\n"
-            f"🚦 Signal: {res['signal']}"
+        message = (
+            f"📊 *BTC Signal*\n\n"
+            f"💰 Price: {data.get('price')}$\n"
+            f"📈 RSI: {data.get('rsi')}\n"
+            f"🧠 Signal: *{data.get('signal')}*"
         )
 
-        await update.message.reply_text(msg)
+        await update.message.reply_text(message, parse_mode="Markdown")
 
-    except:
-        await update.message.reply_text("⚠️ Server error")
+    except Exception:
+        await update.message.reply_text("❌ Error getting signal. Try later.")
 
-app = ApplicationBuilder().token(TOKEN).build()
 
-app.add_handler(CommandHandler("start", start))
-app.add_handler(CommandHandler("btc", signal))
-app.add_handler(CommandHandler("eth", signal))
-app.add_handler(CommandHandler("sol", signal))
+def main():
+    app = ApplicationBuilder().token(TOKEN).build()
 
-app.run_polling()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("signal", signal))
+
+    print("🤖 Bot is running...")
+    app.run_polling()
+
+
+if __name__ == "__main__":
+    main()
