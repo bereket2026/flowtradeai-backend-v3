@@ -2,60 +2,43 @@ import requests
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
-# 🔒 PUT YOUR NEW TELEGRAM TOKEN HERE (keep it secret)
 TOKEN = "PASTE_NEW_TOKEN_HERE"
+API_URL = "https://flowtradeai-backend-v3.onrender.com/signal/"
 
-# Your FlowTradeAI API URL
-API_URL = "https://flowtradeai-backend-v3.onrender.com/signal/{}"
-
-
-# /start command
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "🚀 FlowTradeAI Bot is LIVE!\n\n"
-        "Commands:\n"
-        "/btc → Bitcoin signal\n"
-        "/eth → Ethereum signal"
+        "🚀 FlowTradeAI Bot Ready\n\n"
+        "Type:\n"
+        "/btc\n/eth\n/sol"
     )
 
+async def signal(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    symbol = update.message.text.replace("/", "").lower()
 
-# Function to get signal from API
-async def get_signal(update: Update, symbol: str):
     try:
-        response = requests.get(API_URL.format(symbol))
-        data = response.json()
+        res = requests.get(API_URL + symbol).json()
 
-        if "error" in data:
-            await update.message.reply_text(f"❌ {data['error']}")
+        if "error" in res:
+            await update.message.reply_text("❌ " + res["error"])
             return
 
-        message = (
-            f"📊 {data['symbol']}\n"
-            f"💰 Price: {data['price']}\n"
-            f"🚦 Signal: {data['signal']}"
+        msg = (
+            f"📊 {res['symbol']}\n"
+            f"💰 Price: {res['price']}$\n"
+            f"📈 RSI: {res['rsi']}\n"
+            f"🚦 Signal: {res['signal']}"
         )
 
-        await update.message.reply_text(message)
+        await update.message.reply_text(msg)
 
-    except Exception:
-        await update.message.reply_text("⚠️ Failed to fetch signal.")
+    except:
+        await update.message.reply_text("⚠️ Server error")
 
-
-# BTC command
-async def btc(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await get_signal(update, "bitcoin")
-
-
-# ETH command
-async def eth(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await get_signal(update, "ethereum")
-
-
-# Create and run bot
 app = ApplicationBuilder().token(TOKEN).build()
 
 app.add_handler(CommandHandler("start", start))
-app.add_handler(CommandHandler("btc", btc))
-app.add_handler(CommandHandler("eth", eth))
+app.add_handler(CommandHandler("btc", signal))
+app.add_handler(CommandHandler("eth", signal))
+app.add_handler(CommandHandler("sol", signal))
 
 app.run_polling()
