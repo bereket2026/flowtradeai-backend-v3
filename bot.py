@@ -1,48 +1,60 @@
+import os
 import requests
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
-# 🔑 PUT YOUR TELEGRAM BOT TOKEN HERE
-TOKEN = "PASTE_NEW_TOKEN_HERE"
+# 🔐 Put your NEW Telegram token here or use environment variable
+TOKEN = os.getenv("TELEGRAM_TOKEN", "PASTE_NEW_TOKEN_HERE")
 
-# Your working signal API
-API_URL = "https://flowtradeai-backend-v3.onrender.com/signal/bitcoin"
+# Your BTC signal API endpoint (replace with your real URL if different)
+API_URL = "https://flowtradeai-backend-v3.onrender.com"
 
 
-# /start command
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "🚀 FlowTradeAI Bot Ready!\n\n"
-        "Type /signal to get Bitcoin signal."
+        "🤖 Bot is running!\n\n"
+        "Type /btc to get the latest BTC signal."
     )
 
 
-# /signal command
-async def signal(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def btc(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
-        res = requests.get(API_URL, timeout=10)
-        data = res.json()
+        response = requests.get(API_URL, timeout=10)
+        data = response.json()
+
+        # If API returns error
+        if "error" in data:
+            await update.message.reply_text(f"❌ API Error: {data['error']}")
+            return
+
+        price = data.get("price", "N/A")
+        rsi = data.get("rsi", "N/A")
+        signal = data.get("signal", "N/A")
+        symbol = data.get("symbol", "BTCUSDT")
 
         message = (
-            f"📊 *BTC Signal*\n\n"
-            f"💰 Price: {data.get('price')}$\n"
-            f"📈 RSI: {data.get('rsi')}\n"
-            f"🧠 Signal: *{data.get('signal')}*"
+            f"📊 {symbol} Signal\n"
+            f"💰 Price: {price}\n"
+            f"📈 RSI: {rsi}\n"
+            f"🚦 Signal: {signal}"
         )
 
-        await update.message.reply_text(message, parse_mode="Markdown")
+        await update.message.reply_text(message)
 
-    except Exception:
-        await update.message.reply_text("❌ Error getting signal. Try later.")
+    except Exception as e:
+        await update.message.reply_text(f"⚠️ Error fetching data: {str(e)}")
 
 
 def main():
+    if TOKEN == "PASTE_NEW_TOKEN_HERE":
+        raise AAF05oQ9mRlh-PRkbVU3KbXoPeF6yJ_VtwM
+
     app = ApplicationBuilder().token(TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("signal", signal))
+    app.add_handler(CommandHandler("btc", btc))
 
-    print("🤖 Bot is running...")
+    print("✅ Bot is running...")
     app.run_polling()
 
 
