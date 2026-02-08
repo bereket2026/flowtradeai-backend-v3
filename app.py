@@ -1,68 +1,52 @@
 import requests
-from flask import Flask, jsonify
+from flask import Flask, jsonify, render_template
 
 app = Flask(__name__)
 
-# Map common symbols to CoinGecko IDs
-SYMBOL_MAP = {
-    "btc": "bitcoin",
-    "eth": "ethereum",
-    "bnb": "binancecoin",
-    "sol": "solana",
-    "xrp": "ripple",
-    "ada": "cardano",
-    "doge": "dogecoin"
-}
 
-def get_price_and_rsi(coin_id):
-    # Get market data (includes price change %)
-    url = f"https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids={coin_id}"
-    data = requests.get(url).json()
-
-    if not data:
-        return None, None
-
-    price = data[0]["current_price"]
-    change_24h = data[0]["price_change_percentage_24h"]
-
-    # Simple RSI-like logic using 24h change
-    if change_24h is None:
-        rsi = 50
-    else:
-        rsi = 50 + change_24h
-
-    return price, rsi
-
-
+# Home route
 @app.route("/")
 def home():
-    return "FlowTradeAI Signal API with RSI is LIVE 🚀"
+    return "FlowTradeAI Signal API is running 🚀"
 
 
+# Dashboard route (needs templates/index.html)
+@app.route("/dashboard")
+def dashboard():
+    return render_template("index.html")
+
+
+# Signal API
 @app.route("/signal/<symbol>")
 def signal(symbol):
-    symbol = symbol.lower().replace("usdt", "")
+    try:
+        # convert BTCUSDT → btc
+        symbol = symbol.lower().replace("usdt", "")
 
-    if symbol not in SYMBOL_MAP:
-        return jsonify({"error": "Unsupported symbol"})
+        # CoinGecko price API
+        url = f"https://api.coingecko.com/api/v3/simple/price?ids={symbol}&vs_currencies=usd"
+        response = requests.get(url)
+        data = response.json()
 
-    coin_id = SYMBOL_MAP[symbol]
-    price, rsi = get_price_and_rsi(coin_id)
+        # check if symbol exists
+        if symbol not in data:
+            return jsonify({"error": "Symbol not found on CoinGecko"})
 
-    if price is None:
-        return jsonify({"error": "Data not found"})
+        price = data[symbol]["usd"]
 
-    # Trading decision
-    if rsi < 30:
-        decision = "BUY"
-    elif rsi > 70:
-        decision = "SELL"
-    else:
-        decision = "HOLD"
+        # simple demo signal logic
+        signal_type = "BUY" if price % 2 == 0 else "HOLD"
 
-    return jsonify({
-        "symbol": symbol.upper() + "USDT",
-        "price": price,
-        "rsi": round(rsi, 2),
-        "signal": decision
-    })
+        return jsonify({
+            "symbol": symbol.upper() + "USDT",
+            "price": price,
+            "signal": signal_type
+        })
+
+    except Exception as e:
+        return jsonify({"error": str(e)})
+
+
+# Run locally (Render uses gunicorn instead)
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=10000)
