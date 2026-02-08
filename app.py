@@ -1,9 +1,8 @@
 from flask import Flask, jsonify
-import requests
+from binance.client import Client
 
 app = Flask(__name__)
-
-last_price = {}
+client = Client()
 
 @app.route("/")
 def home():
@@ -11,41 +10,16 @@ def home():
 
 @app.route("/signal/<symbol>")
 def signal(symbol):
-    global last_price
+    try:
+        symbol = symbol.upper()   # IMPORTANT FIX
 
-    url = f"https://api.coingecko.com/api/v3/simple/price?ids={symbol.lower()}&vs_currencies=usd"
-    data = requests.get(url).json()
+        price = client.get_symbol_ticker(symbol=symbol)["price"]
 
-    if symbol.lower() not in data:
-        return jsonify({"error": "Invalid symbol"})
-
-    price = data[symbol.lower()]["usd"]
-
-    # first time → no signal
-    if symbol not in last_price:
-        last_price[symbol] = price
         return jsonify({
             "symbol": symbol,
             "price": price,
-            "signal": "WAIT"
+            "signal": "BUY"  # simple test signal
         })
 
-    # compare prices
-    if price > last_price[symbol]:
-        sig = "BUY"
-    elif price < last_price[symbol]:
-        sig = "SELL"
-    else:
-        sig = "HOLD"
-
-    last_price[symbol] = price
-
-    return jsonify({
-        "symbol": symbol,
-        "price": price,
-        "signal": sig
-    })
-
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000)
+    except Exception as e:
+        return jsonify({"error": str(e)})
