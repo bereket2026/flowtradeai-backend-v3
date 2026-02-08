@@ -46,8 +46,7 @@ async def btc(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 def main():
-    if TOKEN == "PASTE_NEW_TOKEN_HERE":
-        raise AAF05oQ9mRlh-PRkbVU3KbXoPeF6yJ_VtwM
+    if TOKEN == AAF05oQ9mRlh-PRkbVU3KbXoPeF6yJ_VtwM
 
     app = ApplicationBuilder().token(TOKEN).build()
 
