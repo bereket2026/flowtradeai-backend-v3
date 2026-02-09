@@ -3,14 +3,17 @@ import requests
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
+# 🔐 Telegram token from environment variable
 TOKEN = os.getenv("TELEGRAM_TOKEN")
+
+# BTC signal API
 API_URL = "https://flowtradeai-backend-v3.onrender.com"
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "🤖 Bot is running!\n\n"
-        "Type /btc to get the latest BTC signal."
+        "Type /btc to get BTC signal."
     )
 
 
@@ -19,27 +22,27 @@ async def btc(update: Update, context: ContextTypes.DEFAULT_TYPE):
         response = requests.get(API_URL, timeout=10)
         data = response.json()
 
-        price = data.get("price", "N/A")
-        rsi = data.get("rsi", "N/A")
-        signal = data.get("signal", "N/A")
-        symbol = data.get("symbol", "BTCUSDT")
+        if "error" in data:
+            await update.message.reply_text(f"❌ API Error: {data['error']}")
+            return
 
         message = (
-            f"📊 {symbol} Signal\n"
-            f"💰 Price: {price}\n"
-            f"📈 RSI: {rsi}\n"
-            f"🚦 Signal: {signal}"
+            f"📊 {data.get('symbol','BTCUSDT')} Signal\n"
+            f"💰 Price: {data.get('price')}\n"
+            f"📈 RSI: {data.get('rsi')}\n"
+            f"🚦 Signal: {data.get('signal')}"
         )
 
         await update.message.reply_text(message)
 
     except Exception as e:
-        await update.message.reply_text(f"⚠️ Error: {str(e)}")
+        await update.message.reply_text(f"⚠️ Error: {e}")
 
 
 def main():
     if not TOKEN:
-        raise ValueError("TELEGRAM_TOKEN not set")
+        print("❌ TELEGRAM_TOKEN not set")
+        return
 
     app = ApplicationBuilder().token(TOKEN).build()
 
